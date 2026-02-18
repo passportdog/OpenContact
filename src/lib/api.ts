@@ -3,12 +3,15 @@ import { getSupabaseBrowserClient } from './supabase/browser-client'
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`
 
+const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = getSupabaseBrowserClient()
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) throw new Error('Not authenticated')
   return {
     'Authorization': `Bearer ${session.access_token}`,
+    'apikey': ANON_KEY,
     'Content-Type': 'application/json',
   }
 }
@@ -146,7 +149,9 @@ export const gdprErasure = (body: { contact_id: string }) =>
 
 // ── CLAIM (PUBLIC) ──
 export const getClaimProfile = async (token: string) => {
-  const res = await fetch(`${FUNCTIONS_URL}/claim-profile?token=${token}`)
+  const res = await fetch(`${FUNCTIONS_URL}/claim-profile?token=${token}`, {
+    headers: { 'apikey': ANON_KEY },
+  })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Invalid claim token')
   return data
