@@ -1,34 +1,24 @@
 import { getSupabaseBrowserClient } from './supabase/browser-client'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`
+// Use supabase.functions.invoke() — it automatically handles:
+// - Auth token (from current session)
+// - Token refresh (if expired)
+// - apikey header
+// - Content-Type
 
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
+async function callFunction<T = unknown>(
+  name: string,
+  body?: unknown,
+  options?: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' }
+): Promise<T> {
   const supabase = getSupabaseBrowserClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.access_token) throw new Error('Not authenticated')
-  return {
-    'Authorization': `Bearer ${session.access_token}`,
-    'apikey': ANON_KEY,
-    'Content-Type': 'application/json',
-  }
-}
-
-async function callFunction<T = unknown>(name: string, body?: unknown, options?: { method?: string }): Promise<T> {
-  const headers = await getAuthHeaders()
-  const res = await fetch(`${FUNCTIONS_URL}/${name}`, {
-    method: options?.method || 'POST',
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+  const { data, error } = await supabase.functions.invoke(name, {
+    body: body ?? undefined,
+    method: (options?.method || 'POST') as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || `API error ${res.status}`)
+  if (error) throw new Error(error.message || `API error calling ${name}`)
   return data as T
 }
-
-// Public function calls (no JWT)
 
 // ── SCAN PIPELINE ──
 export const processCard = (body: {
@@ -147,13 +137,14 @@ export const getCustomerPortal = () =>
 export const gdprErasure = (body: { contact_id: string }) =>
   callFunction('gdpr-erasure', body)
 
-// ── CLAIM (PUBLIC) ──
+// ── CLAIM (PUBLIC — no auth needed) ──
 export const getClaimProfile = async (token: string) => {
-  const res = await fetch(`${FUNCTIONS_URL}/claim-profile?token=${token}`, {
-    headers: { 'apikey': ANON_KEY },
+  const supabase = getSupabaseBrowserClient()
+  const { data, error } = await supabase.functions.invoke('claim-profile', {
+    body: { token },
+    method: 'GET',
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Invalid claim token')
+  if (error) throw new Error(error.message || 'Invalid claim token')
   return data
 }
 
